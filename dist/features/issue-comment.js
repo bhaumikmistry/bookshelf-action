@@ -114,6 +114,47 @@ const onIssueComment = async (owner, repo, context, octokit) => {
             return;
         }
     }
+    // --- Handle cover: command ---
+    // Format: "cover:https://example.com/image.jpg" or just a bare image URL (.jpg/.png/.webp)
+    const coverMatch = commentBody.match(/^cover:\s*(.+)$/im) ||
+        commentBody.match(/^(https?:\/\/\S+\.(?:jpg|jpeg|png|webp)\S*)$/im);
+    if (coverMatch) {
+        const coverUrl = coverMatch[1].trim();
+        (0, core_1.debug)(`Parsed cover URL: ${coverUrl}`);
+        // Update the bot's original comment JSON with the new image URL
+        const botComment = comments.data.find((c) => (c.body || "").includes("Book details (JSON)"));
+        if (botComment) {
+            try {
+                const jsonBlock = (botComment.body || "").split("```json")[1].split("```")[0];
+                const bookData = JSON.parse(jsonBlock);
+                bookData.image = coverUrl;
+                const newBody = (botComment.body || "").replace(/```json[\s\S]*?```/, "```json\n" + JSON.stringify(bookData, null, 2) + "\n```");
+                await octokit.rest.issues.updateComment({
+                    owner: context.issue.owner,
+                    repo: context.issue.repo,
+                    comment_id: botComment.id,
+                    body: newBody,
+                });
+                (0, core_1.debug)("Updated bot comment with new cover URL");
+            }
+            catch (error) {
+                console.log("Failed to update bot comment with cover:", error);
+            }
+        }
+        // React to confirm
+        try {
+            await octokit.rest.reactions.createForIssueComment({
+                owner: context.issue.owner,
+                repo: context.issue.repo,
+                issue_number: context.issue.number,
+                comment_id: lastComment.id,
+                content: "+1",
+            });
+        }
+        catch (error) { }
+        await (0, update_summary_1.updateSummary)(owner, repo, context, octokit);
+        return;
+    }
     // --- Handle progress (original behavior) ---
     let json = undefined;
     try {
