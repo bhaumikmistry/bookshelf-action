@@ -70,7 +70,8 @@ export const updateSummary = async (
       if (isAbandoned) debug(`Book is abandoned`);
       if (json) {
         debug(`Found JSON data for ${(json as BookResult).title}`);
-        const currentPercentage = issue.title.match(/\(\d+\%\)/g);
+        const percentMatch = issue.title.match(/\((\d+)\%\)/);
+        const currentPercentage = percentMatch ? [percentMatch[1]] : null;
         const overwrites =
           config("overwrites") || ({} as Record<number, { started: string; completed: string }>);
         const openedAt = (overwrites[issue.number] || {}).started

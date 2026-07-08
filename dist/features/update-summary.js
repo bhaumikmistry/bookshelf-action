@@ -52,7 +52,8 @@ const updateSummary = async (owner, repo, context, octokit) => {
                 (0, core_1.debug)(`Book is abandoned`);
             if (json) {
                 (0, core_1.debug)(`Found JSON data for ${json.title}`);
-                const currentPercentage = issue.title.match(/\(\d+\%\)/g);
+                const percentMatch = issue.title.match(/\((\d+)\%\)/);
+                const currentPercentage = percentMatch ? [percentMatch[1]] : null;
                 const overwrites = (0, cosmic_1.config)("overwrites") || {};
                 const openedAt = (overwrites[issue.number] || {}).started
                     ? overwrites[issue.number].started
