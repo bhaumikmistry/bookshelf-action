@@ -57,6 +57,26 @@ const updateSummary = async (owner, repo, context, octokit) => {
                 const closedAt = (overwrites[issue.number] || {}).completed
                     ? overwrites[issue.number].completed
                     : issue.closed_at;
+                // Extract rating from labels (e.g. "rating: 4.5/5")
+                let rating;
+                const ratingLabel = issue.labels.find((l) => {
+                    const name = typeof l === "string" ? l : l.name || "";
+                    return name.startsWith("rating:");
+                });
+                if (ratingLabel) {
+                    const ratingName = typeof ratingLabel === "string" ? ratingLabel : ratingLabel.name || "";
+                    const ratingMatch = ratingName.match(/rating:\s*([\d.]+)/);
+                    if (ratingMatch)
+                        rating = parseFloat(ratingMatch[1]);
+                }
+                // Extract user categories from labels (e.g. "category: favorites", "category: 2025")
+                const userCategories = [];
+                issue.labels.forEach((l) => {
+                    const name = typeof l === "string" ? l : l.name || "";
+                    const catMatch = name.match(/^category:\s*(.+)$/);
+                    if (catMatch)
+                        userCategories.push(catMatch[1].trim());
+                });
                 api.push({
                     ...json,
                     issueNumber: issue.number,
@@ -72,6 +92,8 @@ const updateSummary = async (owner, repo, context, octokit) => {
                     timeToCompleteFormatted: issue.state === "closed"
                         ? (0, humanize_duration_1.default)(new Date(closedAt).getTime() - new Date(openedAt).getTime()).split(",")[0]
                         : undefined,
+                    rating,
+                    userCategories: userCategories.length > 0 ? userCategories : undefined,
                 });
             }
             else

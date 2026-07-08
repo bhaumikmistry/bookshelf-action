@@ -30,6 +30,8 @@ export const updateSummary = async (
     completedAt?: string;
     timeToComplete?: number;
     timeToCompleteFormatted?: string;
+    rating?: number;
+    userCategories?: string[];
   })[] = [];
   for await (const response of octokit.paginate.iterator(octokit.rest.issues.listForRepo, {
     owner: context.issue.owner,
@@ -71,6 +73,27 @@ export const updateSummary = async (
         const closedAt = (overwrites[issue.number] || {}).completed
           ? overwrites[issue.number].completed
           : issue.closed_at;
+
+        // Extract rating from labels (e.g. "rating: 4.5/5")
+        let rating: number | undefined;
+        const ratingLabel = issue.labels.find((l) => {
+          const name = typeof l === "string" ? l : l.name || "";
+          return name.startsWith("rating:");
+        });
+        if (ratingLabel) {
+          const ratingName = typeof ratingLabel === "string" ? ratingLabel : ratingLabel.name || "";
+          const ratingMatch = ratingName.match(/rating:\s*([\d.]+)/);
+          if (ratingMatch) rating = parseFloat(ratingMatch[1]);
+        }
+
+        // Extract user categories from labels (e.g. "category: favorites", "category: 2025")
+        const userCategories: string[] = [];
+        issue.labels.forEach((l) => {
+          const name = typeof l === "string" ? l : l.name || "";
+          const catMatch = name.match(/^category:\s*(.+)$/);
+          if (catMatch) userCategories.push(catMatch[1].trim());
+        });
+
         api.push({
           ...(json as BookResult),
           issueNumber: issue.number,
@@ -91,6 +114,8 @@ export const updateSummary = async (
                   ","
                 )[0]
               : undefined,
+          rating,
+          userCategories: userCategories.length > 0 ? userCategories : undefined,
         });
       } else debug(`Unable to find JSON data for #${issue.id}`);
     }
