@@ -101389,8 +101389,10 @@ const update_summary_1 = __nccwpck_require__(9782);
 const token = (0, core_1.getInput)("token") || process.env.GH_PAT || process.env.GITHUB_TOKEN;
 const [owner, repo] = (process.env.GITHUB_REPOSITORY || "").split("/");
 const run = async () => {
+    console.log("bookshelf-action: starting");
     const COMMAND = (0, core_1.getInput)("command");
-    (0, core_1.debug)(`Got command: ${COMMAND}`);
+    console.log(`bookshelf-action: command="${COMMAND}", owner="${owner}", repo="${repo}"`);
+    console.log(`bookshelf-action: token present=${!!token}`);
     if (!COMMAND)
         throw new Error("Command not found");
     if (!token)
