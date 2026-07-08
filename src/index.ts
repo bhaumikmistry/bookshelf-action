@@ -9,10 +9,8 @@ const token = getInput("token") || process.env.GH_PAT || process.env.GITHUB_TOKE
 const [owner, repo] = (process.env.GITHUB_REPOSITORY || "").split("/");
 
 export const run = async () => {
-  console.log("bookshelf-action: starting");
   const COMMAND = getInput("command");
-  console.log(`bookshelf-action: command="${COMMAND}", owner="${owner}", repo="${repo}"`);
-  console.log(`bookshelf-action: token present=${!!token}`);
+  debug(`Got command: ${COMMAND}`);
   if (!COMMAND) throw new Error("Command not found");
   if (!token) throw new Error("GitHub token not found");
 
