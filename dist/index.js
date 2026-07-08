@@ -282,8 +282,10 @@ ${JSON.stringify(details, null, 2)}
             labels.push(`year: ${publishDate.getUTCFullYear()}`);
             labels.push(`decade: ${Math.floor(publishDate.getUTCFullYear() / 10) * 10}s`);
         }
-        if (details.language)
-            labels.push(`language: ${clean((0, locale_codes_1.getByTag)(details.language).name || details.language)}`);
+        if (details.language) {
+            const langInfo = (0, locale_codes_1.getByTag)(details.language);
+            labels.push(`language: ${clean(langInfo?.name || details.language)}`);
+        }
         if (details.publisher)
             labels.push(`publisher: ${clean(details.publisher)}`);
         (0, core_1.debug)("Added labels from search results");
@@ -533,6 +535,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.search = exports.selectBestBook = void 0;
 const source_1 = __importDefault(__nccwpck_require__(3061));
+const LANG_MAP = {
+    eng: "en", fra: "fr", deu: "de", spa: "es", ita: "it",
+    por: "pt", rus: "ru", jpn: "ja", zho: "zh", kor: "ko",
+    hin: "hi", ara: "ar", nld: "nl", swe: "sv", pol: "pl",
+};
+const mapLanguageCode = (code) => LANG_MAP[code] || code;
 const selectBestBook = (items) => {
     if (!items.length)
         throw new Error("Book not found");
@@ -618,7 +626,7 @@ const searchOpenLibrary = async (q) => {
         publishedDate: doc.first_publish_year ? `${doc.first_publish_year}` : "",
         description: doc.first_sentence?.join(" ") || "",
         image,
-        language: doc.language?.[0] || "en",
+        language: mapLanguageCode(doc.language?.[0] || "en"),
         averageRating: doc.ratings_average || 0,
         ratingsCount: doc.ratings_count || 0,
         categories: doc.subject?.slice(0, 5) || [],
