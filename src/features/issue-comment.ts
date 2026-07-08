@@ -52,6 +52,42 @@ export const onIssueComment = async (
   debug(`Found last comment #${lastComment.id}: "${lastComment.body}"`);
   const commentBody = (lastComment.body || "").trim();
 
+  // --- Handle abandoned command ---
+  // Format: "abandoned" (case-insensitive)
+  if (commentBody.match(/^abandoned$/i)) {
+    debug("Book marked as abandoned");
+
+    await octokit.rest.issues.addLabels({
+      owner: context.issue.owner,
+      repo: context.issue.repo,
+      issue_number: context.issue.number,
+      labels: ["abandoned"],
+    });
+
+    // Close the issue
+    await octokit.rest.issues.update({
+      owner: context.issue.owner,
+      repo: context.issue.repo,
+      issue_number: context.issue.number,
+      state: "closed",
+    });
+    debug("Closed issue as abandoned");
+
+    // React to confirm
+    try {
+      await octokit.rest.reactions.createForIssueComment({
+        owner: context.issue.owner,
+        repo: context.issue.repo,
+        issue_number: context.issue.number,
+        comment_id: lastComment.id,
+        content: "+1",
+      });
+    } catch (error) {}
+
+    await updateSummary(owner, repo, context, octokit);
+    return;
+  }
+
   // --- Handle category: command ---
   // Format: "category:favorites,2025" or "category: favorites, 2026"
   const categoryMatch = commentBody.match(/^category:\s*(.+)$/im);
@@ -59,7 +95,6 @@ export const onIssueComment = async (
     const categories = categoryMatch[1].split(",").map((c) => c.trim()).filter(Boolean);
     debug(`Parsed categories: ${categories.join(", ")}`);
 
-    // Add category labels
     const categoryLabels = categories.map((c) => `category: ${c}`);
     await octokit.rest.issues.addLabels({
       owner: context.issue.owner,
@@ -69,7 +104,6 @@ export const onIssueComment = async (
     });
     debug("Added category labels");
 
-    // React to confirm
     try {
       await octokit.rest.reactions.createForIssueComment({
         owner: context.issue.owner,
@@ -92,7 +126,6 @@ export const onIssueComment = async (
     if (!isNaN(rating) && rating >= 0 && rating <= 5) {
       debug(`Parsed rating: ${rating}/5`);
 
-      // Remove existing rating labels
       const existingLabels = issue.data.labels
         .map((l) => (typeof l === "string" ? l : l.name || ""))
         .filter((l) => l.startsWith("rating:"));
@@ -107,7 +140,6 @@ export const onIssueComment = async (
         } catch (error) {}
       }
 
-      // Add new rating label
       const ratingLabel = `rating: ${rating}/5`;
       await octokit.rest.issues.addLabels({
         owner: context.issue.owner,
@@ -117,7 +149,6 @@ export const onIssueComment = async (
       });
       debug("Added rating label");
 
-      // React to confirm
       try {
         await octokit.rest.reactions.createForIssueComment({
           owner: context.issue.owner,
@@ -141,7 +172,6 @@ export const onIssueComment = async (
     const coverUrl = coverMatch[1].trim();
     debug(`Parsed cover URL: ${coverUrl}`);
 
-    // Update the bot's original comment JSON with the new image URL
     const botComment = comments.data.find((c: any) =>
       (c.body || "").includes("Book details (JSON)")
     );
@@ -166,7 +196,6 @@ export const onIssueComment = async (
       }
     }
 
-    // React to confirm
     try {
       await octokit.rest.reactions.createForIssueComment({
         owner: context.issue.owner,
@@ -181,7 +210,7 @@ export const onIssueComment = async (
     return;
   }
 
-  // --- Handle progress (original behavior) ---
+  // --- Handle progress (19%, 50%, 100%, or page-based like 150/300) ---
   let json: BookResult | undefined = undefined;
   try {
     comments.data.forEach((comment: any) => {
@@ -229,6 +258,7 @@ export const onIssueComment = async (
         content: "+1",
       });
     } catch (error) {}
+
     const currentPercentage = issue.data.title.match(/\(\d+\%\)/g);
     await octokit.rest.issues.update({
       owner: context.issue.owner,
@@ -240,6 +270,18 @@ export const onIssueComment = async (
           : `${issue.data.title.trim()} (${progressPercent}%)`,
     });
     debug("Updated issue title with progress");
+
+    // If 100% → close the issue (book finished)
+    if (progressPercent >= 100) {
+      await octokit.rest.issues.update({
+        owner: context.issue.owner,
+        repo: context.issue.repo,
+        issue_number: context.issue.number,
+        state: "closed",
+      });
+      debug("Closed issue — book completed at 100%");
+    }
+
     // Remove "want to read" label if it's there
     if (
       issue.data.labels.find((i) =>

@@ -23,10 +23,12 @@ export const updateSummary = async (
   } catch (error) {}
 
   let api: (BookResult & {
-    state: "reading" | "completed" | "want-to-read";
+    state: "reading" | "completed" | "want-to-read" | "abandoned";
     issueNumber: number;
     startedAt: string;
     progressPercent: number;
+    read: number;
+    abandoned: boolean;
     completedAt?: string;
     timeToComplete?: number;
     timeToCompleteFormatted?: string;
@@ -61,7 +63,11 @@ export const updateSummary = async (
       const isWantToRead = issue.labels.find((label) =>
         typeof label === "string" ? label === "want to read" : label.name === "want to read"
       );
+      const isAbandoned = issue.labels.find((label) =>
+        typeof label === "string" ? label === "abandoned" : label.name === "abandoned"
+      );
       if (isWantToRead) debug(`Book is in category "want to read"`);
+      if (isAbandoned) debug(`Book is abandoned`);
       if (json) {
         debug(`Found JSON data for ${(json as BookResult).title}`);
         const currentPercentage = issue.title.match(/\(\d+\%\)/g);
@@ -94,14 +100,23 @@ export const updateSummary = async (
           if (catMatch) userCategories.push(catMatch[1].trim());
         });
 
+        const progress =
+          currentPercentage && currentPercentage.length && !isNaN(parseInt(currentPercentage[0]))
+            ? parseInt(currentPercentage[0])
+            : 0;
+
+        let state: "reading" | "completed" | "want-to-read" | "abandoned";
+        if (isAbandoned) state = "abandoned";
+        else if (issue.state === "open") state = isWantToRead ? "want-to-read" : "reading";
+        else state = "completed";
+
         api.push({
           ...(json as BookResult),
           issueNumber: issue.number,
-          progressPercent:
-            currentPercentage && currentPercentage.length && !isNaN(parseInt(currentPercentage[0]))
-              ? parseInt(currentPercentage[0])
-              : 0,
-          state: issue.state === "open" ? (isWantToRead ? "want-to-read" : "reading") : "completed",
+          progressPercent: progress,
+          read: state === "completed" ? 100 : progress,
+          abandoned: !!isAbandoned,
+          state,
           startedAt: new Date(openedAt).toISOString(),
           completedAt: issue.state === "closed" ? new Date(closedAt).toISOString() : undefined,
           timeToComplete:

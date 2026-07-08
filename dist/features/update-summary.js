@@ -45,8 +45,11 @@ const updateSummary = async (owner, repo, context, octokit) => {
                 console.log("JSON parsing error", error);
             }
             const isWantToRead = issue.labels.find((label) => typeof label === "string" ? label === "want to read" : label.name === "want to read");
+            const isAbandoned = issue.labels.find((label) => typeof label === "string" ? label === "abandoned" : label.name === "abandoned");
             if (isWantToRead)
                 (0, core_1.debug)(`Book is in category "want to read"`);
+            if (isAbandoned)
+                (0, core_1.debug)(`Book is abandoned`);
             if (json) {
                 (0, core_1.debug)(`Found JSON data for ${json.title}`);
                 const currentPercentage = issue.title.match(/\(\d+\%\)/g);
@@ -77,13 +80,23 @@ const updateSummary = async (owner, repo, context, octokit) => {
                     if (catMatch)
                         userCategories.push(catMatch[1].trim());
                 });
+                const progress = currentPercentage && currentPercentage.length && !isNaN(parseInt(currentPercentage[0]))
+                    ? parseInt(currentPercentage[0])
+                    : 0;
+                let state;
+                if (isAbandoned)
+                    state = "abandoned";
+                else if (issue.state === "open")
+                    state = isWantToRead ? "want-to-read" : "reading";
+                else
+                    state = "completed";
                 api.push({
                     ...json,
                     issueNumber: issue.number,
-                    progressPercent: currentPercentage && currentPercentage.length && !isNaN(parseInt(currentPercentage[0]))
-                        ? parseInt(currentPercentage[0])
-                        : 0,
-                    state: issue.state === "open" ? (isWantToRead ? "want-to-read" : "reading") : "completed",
+                    progressPercent: progress,
+                    read: state === "completed" ? 100 : progress,
+                    abandoned: !!isAbandoned,
+                    state,
                     startedAt: new Date(openedAt).toISOString(),
                     completedAt: issue.state === "closed" ? new Date(closedAt).toISOString() : undefined,
                     timeToComplete: issue.state === "closed"
