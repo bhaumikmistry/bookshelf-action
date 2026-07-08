@@ -35,8 +35,8 @@ const onNewIssue = async (owner, repo, context, octokit) => {
         `started: ${new Date().getUTCFullYear()}`,
     ];
     try {
-        (0, core_1.debug)(`Searching for "${issue.data.title}"`);
-        const details = await (0, google_books_1.search)(issue.data.title);
+        (0, core_1.debug)(`Searching for "${issue.data.title}" (body: ${issue.data.body || "empty"})`);
+        const details = await (0, google_books_1.search)(issue.data.title, issue.data.body || "");
         body += `Congrats on adding **${details.title}** by ${details.authors.join(", ")} to your bookshelf, I hope you enjoy it! It has an average of ${details.averageRating || "unknown"}/5 stars and ${(details.ratingsCount || 0).toLocaleString()} ratings on [Google Books](${details.googleBooks.info}).\n\n<details>
  <summary>Book details (JSON)</summary>
 

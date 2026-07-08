@@ -38,8 +38,8 @@ export const onNewIssue = async (
     `started: ${new Date().getUTCFullYear()}`,
   ];
   try {
-    debug(`Searching for "${issue.data.title}"`);
-    const details = await search(issue.data.title);
+    debug(`Searching for "${issue.data.title}" (body: ${issue.data.body || "empty"})`);
+    const details = await search(issue.data.title, issue.data.body || "");
     body += `Congrats on adding **${details.title}** by ${details.authors.join(
       ", "
     )} to your bookshelf, I hope you enjoy it! It has an average of ${

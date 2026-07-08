@@ -28,10 +28,102 @@ const isRateLimitError = (error) => typeof error === "object" &&
     error.response?.statusCode === 429;
 const wait = async (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 /**
- * Search Open Library API (free, no key required)
+ * Extract Open Library edition ID (OL*M) from text.
+ * Matches: "OL57519135M", "https://openlibrary.org/books/OL57519135M", or full URLs with params.
+ */
+const extractOLEditionId = (text) => {
+    const match = text.match(/\b(OL\d+M)\b/);
+    return match ? match[1] : null;
+};
+/**
+ * Fetch book directly by Open Library edition ID (e.g. OL57519135M)
+ */
+const fetchByEditionId = async (editionId) => {
+    console.log(`bookshelf-action: fetching Open Library edition ${editionId}`);
+    const editionRes = await (0, source_1.default)(`https://openlibrary.org/books/${editionId}.json`, { responseType: "json" });
+    const ed = editionRes.body;
+    // Resolve author names from author keys
+    const authors = [];
+    if (ed.authors && ed.authors.length > 0) {
+        for (const authorRef of ed.authors) {
+            const authorKey = authorRef.key || authorRef;
+            try {
+                const authorRes = await (0, source_1.default)(`https://openlibrary.org${authorKey}.json`, { responseType: "json" });
+                authors.push(authorRes.body.name || authorRes.body.personal_name || "");
+            }
+            catch (e) {
+                // Skip unresolvable author
+            }
+        }
+    }
+    // Get work-level data (subjects, description)
+    let description = "";
+    let categories = [];
+    if (ed.works && ed.works.length > 0) {
+        try {
+            const workRes = await (0, source_1.default)(`https://openlibrary.org${ed.works[0].key}.json`, { responseType: "json" });
+            const work = workRes.body;
+            description = work.description?.value || work.description || "";
+            categories = (work.subjects || []).slice(0, 5);
+        }
+        catch (e) {
+            // Work lookup failed
+        }
+    }
+    // Cover image
+    let image = "";
+    if (ed.covers && ed.covers.length > 0 && ed.covers[0] > 0) {
+        image = `https://covers.openlibrary.org/b/id/${ed.covers[0]}-L.jpg`;
+    }
+    else {
+        image = `https://covers.openlibrary.org/b/olid/${editionId}-L.jpg`;
+    }
+    // ISBN
+    let isbn13;
+    let isbn10;
+    if (ed.isbn_13?.length)
+        isbn13 = ed.isbn_13[0];
+    if (ed.isbn_10?.length)
+        isbn10 = ed.isbn_10[0];
+    // Language
+    let language = "en";
+    if (ed.languages?.length) {
+        const langKey = ed.languages[0].key || "";
+        const langCode = langKey.replace("/languages/", "");
+        language = mapLanguageCode(langCode);
+    }
+    // Publisher
+    const publisher = ed.publishers?.length ? ed.publishers[0] : "";
+    // Publish date → year
+    const publishedDate = ed.publish_date || "";
+    console.log(`bookshelf-action: found "${ed.title}" by ${authors.join(", ")} (${editionId})`);
+    return {
+        title: ed.title,
+        authors,
+        publisher,
+        publishedDate,
+        description: typeof description === "string" ? description.substring(0, 500) : "",
+        image,
+        language,
+        averageRating: 0,
+        ratingsCount: 0,
+        categories,
+        pageCount: ed.number_of_pages || 0,
+        isbn10,
+        isbn13,
+        googleBooks: {
+            id: editionId,
+            preview: `https://openlibrary.org/books/${editionId}`,
+            info: `https://openlibrary.org/books/${editionId}`,
+            canonical: `https://openlibrary.org/books/${editionId}`,
+        },
+    };
+};
+/**
+ * Search Open Library API by title/author (free, no key required)
  */
 const searchOpenLibrary = async (q) => {
-    console.log(`bookshelf-action: trying Open Library for "${q}"`);
+    console.log(`bookshelf-action: searching Open Library for "${q}"`);
     // Parse "Title by Author" format
     let title = q;
     let author = "";
@@ -59,7 +151,7 @@ const searchOpenLibrary = async (q) => {
     else if (doc.cover_edition_key) {
         image = `https://covers.openlibrary.org/b/olid/${doc.cover_edition_key}-L.jpg`;
     }
-    // Try to get ISBN from edition if not in search results
+    // Try to get ISBN
     let isbn10;
     let isbn13;
     if (doc.isbn && doc.isbn.length > 0) {
@@ -80,16 +172,19 @@ const searchOpenLibrary = async (q) => {
             if (ed.isbn_10?.length)
                 isbn10 = ed.isbn_10[0];
         }
-        catch (e) {
-            // Edition lookup failed, continue without ISBN
-        }
+        catch (e) { }
     }
-    // Get publisher from edition if available
+    // Publisher
     let publisher = "";
     if (doc.publisher && doc.publisher.length > 0) {
         publisher = doc.publisher[0];
     }
-    // Fallback image using Bing if no cover found
+    // Language
+    let language = "en";
+    if (doc.language && doc.language.length > 0) {
+        language = mapLanguageCode(doc.language[0]);
+    }
+    // Fallback image
     if (!image) {
         const searchTitle = doc.title + (doc.author_name ? ` by ${doc.author_name.join(", ")}` : "");
         image = `https://tse2.mm.bing.net/th?q=${encodeURIComponent(searchTitle)}&w=256&c=7&rs=1&p=0&dpr=3&pid=1.7&mkt=en-IN&adlt=moderate`;
@@ -101,7 +196,7 @@ const searchOpenLibrary = async (q) => {
         publishedDate: doc.first_publish_year ? `${doc.first_publish_year}` : "",
         description: doc.first_sentence?.join(" ") || "",
         image,
-        language: mapLanguageCode(doc.language?.[0] || "en"),
+        language,
         averageRating: doc.ratings_average || 0,
         ratingsCount: doc.ratings_count || 0,
         categories: doc.subject?.slice(0, 5) || [],
@@ -164,18 +259,35 @@ const searchGoogleBooks = async (q) => {
     };
 };
 /**
- * Search for a book — tries Google Books first, falls back to Open Library
+ * Main search function — resolution priority:
+ * 1. Issue body has OL edition ID (e.g. OL57519135M) → direct fetch
+ * 2. Issue body has openlibrary.org URL → extract ID, direct fetch
+ * 3. Default: try Google Books, fall back to Open Library title search
+ *
+ * @param title - Issue title (e.g. "Norwegian Wood by Haruki Murakami")
+ * @param body - Issue body (may contain OL ID or URL)
  */
-const search = async (q) => {
-    // Try Google Books first
+const search = async (title, body) => {
+    // Priority 1 & 2: Check issue body for Open Library edition ID or URL
+    if (body) {
+        const editionId = extractOLEditionId(body);
+        if (editionId) {
+            try {
+                return await fetchByEditionId(editionId);
+            }
+            catch (error) {
+                console.log(`bookshelf-action: edition fetch failed (${error}), falling back to search...`);
+            }
+        }
+    }
+    // Priority 3: Try Google Books first, then Open Library search
     try {
-        return await searchGoogleBooks(q);
+        return await searchGoogleBooks(title);
     }
     catch (error) {
-        console.log(`bookshelf-action: Google Books failed (${error}), trying Open Library...`);
+        console.log(`bookshelf-action: Google Books failed (${error}), trying Open Library search...`);
     }
-    // Fallback to Open Library
-    return await searchOpenLibrary(q);
+    return await searchOpenLibrary(title);
 };
 exports.search = search;
 //# sourceMappingURL=google-books.js.map
