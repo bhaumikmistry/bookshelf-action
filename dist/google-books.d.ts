@@ -54,4 +54,7 @@ export interface BookResult {
     };
 }
 export declare const selectBestBook: (items: Book[]) => Book;
+/**
+ * Search for a book — tries Google Books first, falls back to Open Library
+ */
 export declare const search: (q: string) => Promise<BookResult>;
