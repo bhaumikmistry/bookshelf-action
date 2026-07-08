@@ -15,21 +15,16 @@ export const onNewIssue = async (
   context: Context,
   octokit: InstanceType<typeof GitHub>
 ) => {
-  console.log("bookshelf-action: onNewIssue started");
-  console.log("bookshelf-action: context.issue =", JSON.stringify(context.issue || "undefined"));
-  console.log("bookshelf-action: context.payload.issue?.title =", context.payload?.issue?.title);
+  debug("Started onNewIssue");
   try {
     await cosmic("bookshelf");
-    console.log("bookshelf-action: got config");
-  } catch (error) {
-    console.log("bookshelf-action: no config file (ok)");
-  }
+    debug("Got config object");
+  } catch (error) {}
   const issue = await octokit.rest.issues.get({
     owner: context.issue.owner,
     repo: context.issue.repo,
     issue_number: context.issue.number,
   });
-  console.log("bookshelf-action: fetched issue #" + issue.data.number + " title=" + issue.data.title);
   debug(`Got issue #${issue.data.number}`);
   if (config("users") && Array.isArray(config("users"))) {
     if (!(config("users") as string[]).find((i) => i === (issue.data.user || {}).login))
