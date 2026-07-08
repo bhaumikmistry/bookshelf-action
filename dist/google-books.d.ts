@@ -55,6 +55,12 @@ export interface BookResult {
 }
 export declare const selectBestBook: (items: Book[]) => Book;
 /**
- * Search for a book — tries Google Books first, falls back to Open Library
+ * Main search function — resolution priority:
+ * 1. Issue body has OL edition ID (e.g. OL57519135M) → direct fetch
+ * 2. Issue body has openlibrary.org URL → extract ID, direct fetch
+ * 3. Default: try Google Books, fall back to Open Library title search
+ *
+ * @param title - Issue title (e.g. "Norwegian Wood by Haruki Murakami")
+ * @param body - Issue body (may contain OL ID or URL)
  */
-export declare const search: (q: string) => Promise<BookResult>;
+export declare const search: (title: string, body?: string) => Promise<BookResult>;
