@@ -52,8 +52,10 @@ ${JSON.stringify(details, null, 2)}
             labels.push(`year: ${publishDate.getUTCFullYear()}`);
             labels.push(`decade: ${Math.floor(publishDate.getUTCFullYear() / 10) * 10}s`);
         }
-        if (details.language)
-            labels.push(`language: ${clean((0, locale_codes_1.getByTag)(details.language).name || details.language)}`);
+        if (details.language) {
+            const langInfo = (0, locale_codes_1.getByTag)(details.language);
+            labels.push(`language: ${clean(langInfo?.name || details.language)}`);
+        }
         if (details.publisher)
             labels.push(`publisher: ${clean(details.publisher)}`);
         (0, core_1.debug)("Added labels from search results");

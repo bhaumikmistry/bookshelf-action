@@ -5,6 +5,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.search = exports.selectBestBook = void 0;
 const source_1 = __importDefault(require("got/dist/source"));
+const LANG_MAP = {
+    eng: "en", fra: "fr", deu: "de", spa: "es", ita: "it",
+    por: "pt", rus: "ru", jpn: "ja", zho: "zh", kor: "ko",
+    hin: "hi", ara: "ar", nld: "nl", swe: "sv", pol: "pl",
+};
+const mapLanguageCode = (code) => LANG_MAP[code] || code;
 const selectBestBook = (items) => {
     if (!items.length)
         throw new Error("Book not found");
@@ -90,7 +96,7 @@ const searchOpenLibrary = async (q) => {
         publishedDate: doc.first_publish_year ? `${doc.first_publish_year}` : "",
         description: doc.first_sentence?.join(" ") || "",
         image,
-        language: doc.language?.[0] || "en",
+        language: mapLanguageCode(doc.language?.[0] || "en"),
         averageRating: doc.ratings_average || 0,
         ratingsCount: doc.ratings_count || 0,
         categories: doc.subject?.slice(0, 5) || [],
