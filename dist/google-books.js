@@ -6,9 +6,14 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.search = exports.selectBestBook = void 0;
 const source_1 = __importDefault(require("got/dist/source"));
 const LANG_MAP = {
-    eng: "en", fra: "fr", deu: "de", spa: "es", ita: "it",
-    por: "pt", rus: "ru", jpn: "ja", zho: "zh", kor: "ko",
-    hin: "hi", ara: "ar", nld: "nl", swe: "sv", pol: "pl",
+    eng: "en", fre: "fr", fra: "fr", deu: "de", ger: "de",
+    spa: "es", ita: "it", por: "pt", rus: "ru", jpn: "ja",
+    zho: "zh", chi: "zh", kor: "ko", hin: "hi", ara: "ar",
+    nld: "nl", dut: "nl", swe: "sv", pol: "pl", tur: "tr",
+    dan: "da", nor: "no", fin: "fi", hun: "hu", cze: "cs",
+    gre: "el", heb: "he", tha: "th", vie: "vi", ind: "id",
+    may: "ms", per: "fa", urd: "ur", ben: "bn", tam: "ta",
+    tel: "te", mar: "mr", guj: "gu", kan: "kn", mal: "ml",
 };
 const mapLanguageCode = (code) => LANG_MAP[code] || code;
 const selectBestBook = (items) => {
