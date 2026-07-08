@@ -101018,17 +101018,22 @@ const google_books_1 = __nccwpck_require__(3297);
 const update_summary_1 = __nccwpck_require__(9782);
 const clean = (str) => (0, slugify_1.default)(str, { lowercase: true, separator: " " });
 const onNewIssue = async (owner, repo, context, octokit) => {
-    (0, core_1.debug)("Started onNewIssue");
+    console.log("bookshelf-action: onNewIssue started");
+    console.log("bookshelf-action: context.issue =", JSON.stringify(context.issue || "undefined"));
+    console.log("bookshelf-action: context.payload.issue?.title =", context.payload?.issue?.title);
     try {
         await (0, cosmic_1.cosmic)("bookshelf");
-        (0, core_1.debug)("Got config object");
+        console.log("bookshelf-action: got config");
     }
-    catch (error) { }
+    catch (error) {
+        console.log("bookshelf-action: no config file (ok)");
+    }
     const issue = await octokit.rest.issues.get({
         owner: context.issue.owner,
         repo: context.issue.repo,
         issue_number: context.issue.number,
     });
+    console.log("bookshelf-action: fetched issue #" + issue.data.number + " title=" + issue.data.title);
     (0, core_1.debug)(`Got issue #${issue.data.number}`);
     if ((0, cosmic_1.config)("users") && Array.isArray((0, cosmic_1.config)("users"))) {
         if (!(0, cosmic_1.config)("users").find((i) => i === (issue.data.user || {}).login))
