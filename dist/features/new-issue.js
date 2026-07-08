@@ -81,12 +81,7 @@ ${JSON.stringify(details, null, 2)}
         labels: labels.map((label) => (label.length > 50 ? `${label.substring(0, 47)}...` : label)),
     });
     (0, core_1.debug)("Added all labels to issue");
-    await octokit.rest.issues.lock({
-        owner: context.issue.owner,
-        repo: context.issue.repo,
-        issue_number: context.issue.number,
-    });
-    (0, core_1.debug)("Locked issue");
+    // Note: we don't lock issues so users can add category/rating comments later
     await (0, update_summary_1.updateSummary)(owner, repo, context, octokit);
 };
 exports.onNewIssue = onNewIssue;
