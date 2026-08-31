@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.search = exports.selectBestBook = void 0;
+exports.search = exports.parseManualMetadata = exports.stripProgress = exports.selectBestBook = void 0;
 const source_1 = __importDefault(require("got/dist/source"));
 const LANG_MAP = {
     eng: "en", fre: "fr", fra: "fr", deu: "de", ger: "de",
@@ -258,22 +258,162 @@ const searchGoogleBooks = async (q) => {
         },
     };
 };
+const NAMED_LANGUAGES = {
+    english: "en", hindi: "hi", gujarati: "gu", marathi: "mr", bengali: "bn",
+    tamil: "ta", telugu: "te", kannada: "kn", malayalam: "ml", urdu: "ur",
+    french: "fr", german: "de", spanish: "es", italian: "it", portuguese: "pt",
+    russian: "ru", japanese: "ja", chinese: "zh", korean: "ko", dutch: "nl",
+};
+const normalizeLanguage = (value) => {
+    const key = value.trim().toLowerCase();
+    return NAMED_LANGUAGES[key] || mapLanguageCode(key);
+};
+/** Strip the trailing progress marker, e.g. "Title by Author (42%)" -> "Title by Author". */
+const stripProgress = (title) => title.replace(/\s*\(\d+%\)\s*$/, "").trim();
+exports.stripProgress = stripProgress;
+const splitList = (value) => value.split(",").map((part) => part.trim()).filter(Boolean);
+/**
+ * Manual metadata written directly in the issue body, for books that neither
+ * Google Books nor Open Library knows about. Lines are "key: value", optionally
+ * wrapped in a fenced block. Unknown keys are ignored.
+ */
+const parseManualMetadata = (body) => {
+    const manual = {};
+    if (!body)
+        return manual;
+    const lines = body.replace(/```[a-z]*\n?/gi, "").split(/\r?\n/);
+    for (const line of lines) {
+        const match = line.match(/^\s*[-*]?\s*([a-z0-9_ ]+?)\s*:\s*(.+?)\s*$/i);
+        if (!match)
+            continue;
+        const key = match[1].trim().toLowerCase().replace(/\s+/g, "");
+        const value = match[2].trim();
+        if (!value)
+            continue;
+        switch (key) {
+            case "title":
+                manual.title = value;
+                break;
+            case "author":
+            case "authors":
+                manual.authors = splitList(value);
+                break;
+            case "publisher":
+                manual.publisher = value;
+                break;
+            case "year":
+            case "published":
+            case "publisheddate":
+                manual.publishedDate = value;
+                break;
+            case "image":
+            case "cover":
+                manual.image = value;
+                break;
+            case "isbn13":
+                manual.isbn13 = value.replace(/-/g, "");
+                break;
+            case "isbn10":
+                manual.isbn10 = value.replace(/-/g, "");
+                break;
+            case "isbn": {
+                const isbn = value.replace(/-/g, "");
+                if (isbn.length === 10)
+                    manual.isbn10 = isbn;
+                else
+                    manual.isbn13 = isbn;
+                break;
+            }
+            case "pages":
+            case "pagecount": {
+                const pages = parseInt(value, 10);
+                if (!isNaN(pages))
+                    manual.pageCount = pages;
+                break;
+            }
+            case "categories":
+            case "subjects":
+                manual.categories = splitList(value);
+                break;
+            case "language":
+                manual.language = normalizeLanguage(value);
+                break;
+            case "rating":
+            case "averagerating": {
+                const rating = parseFloat(value);
+                if (!isNaN(rating))
+                    manual.averageRating = rating;
+                break;
+            }
+            case "description":
+                manual.description = value;
+                break;
+            case "link":
+            case "url":
+            case "source":
+                manual.googleBooks = { id: "", preview: value, info: value, canonical: value };
+                break;
+            default: break;
+        }
+    }
+    return manual;
+};
+exports.parseManualMetadata = parseManualMetadata;
+const hasManualData = (manual) => Object.keys(manual).length > 0;
+/** Manual values win over looked-up ones, since they were written on purpose. */
+const mergeManual = (result, manual) => ({
+    ...result,
+    ...manual,
+    googleBooks: manual.googleBooks?.info ? manual.googleBooks : result.googleBooks,
+});
+/** Build a complete record from manual metadata plus the issue title. */
+const bookFromManual = (title, manual) => {
+    const cleanTitle = (0, exports.stripProgress)(title);
+    const byMatch = cleanTitle.match(/^(.+?)\s+by\s+(.+)$/i);
+    const fallbackTitle = byMatch ? byMatch[1].trim() : cleanTitle;
+    const fallbackAuthors = byMatch ? splitList(byMatch[2]) : [];
+    const resolvedTitle = manual.title || fallbackTitle;
+    const resolvedAuthors = manual.authors || fallbackAuthors;
+    console.log(`bookshelf-action: using metadata from the issue body for "${resolvedTitle}"`);
+    return {
+        title: resolvedTitle,
+        authors: resolvedAuthors,
+        publisher: manual.publisher || "",
+        publishedDate: manual.publishedDate || "",
+        description: manual.description || "",
+        image: manual.image ||
+            `https://tse2.mm.bing.net/th?q=${encodeURIComponent(`${resolvedTitle}${resolvedAuthors.length ? ` by ${resolvedAuthors.join(", ")}` : ""}`)}&w=256&c=7&rs=1&p=0&dpr=3&pid=1.7&mkt=en-IN&adlt=moderate`,
+        language: manual.language || "en",
+        averageRating: manual.averageRating || 0,
+        ratingsCount: manual.ratingsCount || 0,
+        categories: manual.categories || [],
+        pageCount: manual.pageCount || 0,
+        isbn10: manual.isbn10,
+        isbn13: manual.isbn13,
+        googleBooks: manual.googleBooks || { id: "", preview: "", info: "", canonical: "" },
+    };
+};
 /**
  * Main search function — resolution priority:
  * 1. Issue body has OL edition ID (e.g. OL57519135M) → direct fetch
  * 2. Issue body has openlibrary.org URL → extract ID, direct fetch
- * 3. Default: try Google Books, fall back to Open Library title search
+ * 3. Google Books, then Open Library title search
+ * 4. Neither knows the book → build the record from "key: value" lines in the body
+ *
+ * Metadata written in the issue body always overrides what a lookup returned.
  *
  * @param title - Issue title (e.g. "Norwegian Wood by Haruki Murakami")
- * @param body - Issue body (may contain OL ID or URL)
+ * @param body - Issue body (may contain an OL ID, a URL, or manual metadata)
  */
 const search = async (title, body) => {
+    const manual = (0, exports.parseManualMetadata)(body || "");
+    const query = (0, exports.stripProgress)(title);
     // Priority 1 & 2: Check issue body for Open Library edition ID or URL
     if (body) {
         const editionId = extractOLEditionId(body);
         if (editionId) {
             try {
-                return await fetchByEditionId(editionId);
+                return mergeManual(await fetchByEditionId(editionId), manual);
             }
             catch (error) {
                 console.log(`bookshelf-action: edition fetch failed (${error}), falling back to search...`);
@@ -282,12 +422,20 @@ const search = async (title, body) => {
     }
     // Priority 3: Try Google Books first, then Open Library search
     try {
-        return await searchGoogleBooks(title);
+        return mergeManual(await searchGoogleBooks(query), manual);
     }
     catch (error) {
         console.log(`bookshelf-action: Google Books failed (${error}), trying Open Library search...`);
     }
-    return await searchOpenLibrary(title);
+    try {
+        return mergeManual(await searchOpenLibrary(query), manual);
+    }
+    catch (error) {
+        // Priority 4: nobody has it, so use whatever the issue itself provides
+        if (hasManualData(manual))
+            return bookFromManual(title, manual);
+        throw error;
+    }
 };
 exports.search = search;
 //# sourceMappingURL=google-books.js.map

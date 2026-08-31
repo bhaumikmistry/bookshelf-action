@@ -54,13 +54,24 @@ export interface BookResult {
     };
 }
 export declare const selectBestBook: (items: Book[]) => Book;
+/** Strip the trailing progress marker, e.g. "Title by Author (42%)" -> "Title by Author". */
+export declare const stripProgress: (title: string) => string;
+/**
+ * Manual metadata written directly in the issue body, for books that neither
+ * Google Books nor Open Library knows about. Lines are "key: value", optionally
+ * wrapped in a fenced block. Unknown keys are ignored.
+ */
+export declare const parseManualMetadata: (body: string) => Partial<BookResult>;
 /**
  * Main search function — resolution priority:
  * 1. Issue body has OL edition ID (e.g. OL57519135M) → direct fetch
  * 2. Issue body has openlibrary.org URL → extract ID, direct fetch
- * 3. Default: try Google Books, fall back to Open Library title search
+ * 3. Google Books, then Open Library title search
+ * 4. Neither knows the book → build the record from "key: value" lines in the body
+ *
+ * Metadata written in the issue body always overrides what a lookup returned.
  *
  * @param title - Issue title (e.g. "Norwegian Wood by Haruki Murakami")
- * @param body - Issue body (may contain OL ID or URL)
+ * @param body - Issue body (may contain an OL ID, a URL, or manual metadata)
  */
 export declare const search: (title: string, body?: string) => Promise<BookResult>;
